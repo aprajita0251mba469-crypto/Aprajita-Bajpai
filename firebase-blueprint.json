@@ -1,0 +1,214 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Customer or admin profile with personal details and cumulative sustainability impact.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "displayName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 150 },
+        "phone": { "type": "string", "maxLength": 20 },
+        "hostelOrAddress": { "type": "string", "maxLength": 250 },
+        "roomNumber": { "type": "string", "maxLength": 40 },
+        "role": { "type": "string", "enum": ["customer", "admin"] },
+        "adminRequested": { "type": "boolean" },
+        "totalOrders": { "type": "number" },
+        "totalMoneySaved": { "type": "number" },
+        "totalBottlesAvoided": { "type": "number" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "displayName", "email", "role", "totalOrders", "totalMoneySaved", "totalBottlesAvoided", "createdAt", "updatedAt"]
+    },
+    "AdminRecord": {
+      "title": "AdminRecord",
+      "description": "Trusted server-verified admin allowlist entry.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "email": { "type": "string", "minLength": 3, "maxLength": 150 },
+        "grantedBy": { "type": "string", "maxLength": 150 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Household liquid refill product with tiered volume pricing and stock levels.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "category": { "type": "string", "enum": ["Personal Care", "Kitchen", "Home Care", "Laundry"] },
+        "description": { "type": "string", "minLength": 10, "maxLength": 600 },
+        "ingredients": { "type": "string", "maxLength": 300 },
+        "scent": { "type": "string", "maxLength": 80 },
+        "imageUrl": { "type": "string", "minLength": 1, "maxLength": 500 },
+        "price250ml": { "type": "number" },
+        "price500ml": { "type": "number" },
+        "price1000ml": { "type": "number" },
+        "mrpPlastic250ml": { "type": "number" },
+        "mrpPlastic500ml": { "type": "number" },
+        "mrpPlastic1000ml": { "type": "number" },
+        "stockLitres": { "type": "number" },
+        "active": { "type": "boolean" },
+        "featured": { "type": "boolean" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "category", "description", "imageUrl", "price250ml", "price500ml", "price1000ml", "mrpPlastic250ml", "mrpPlastic500ml", "mrpPlastic1000ml", "stockLitres", "active", "featured", "updatedAt"]
+    },
+    "CartItem": {
+      "title": "CartItem",
+      "description": "Persistent shopping cart item belonging to an authenticated customer.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "volumeMl": { "type": "number", "enum": [250, 500, 1000] },
+        "unitPrice": { "type": "number" },
+        "plasticMrp": { "type": "number" },
+        "quantity": { "type": "number" },
+        "containerMode": { "type": "string", "enum": ["own", "reusable"] },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "productId", "productName", "volumeMl", "unitPrice", "plasticMrp", "quantity", "containerMode", "updatedAt"]
+    },
+    "Address": {
+      "title": "Address",
+      "description": "Saved hostel or household delivery address for a customer.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "label": { "type": "string", "minLength": 1, "maxLength": 60 },
+        "recipientName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "phone": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "hostelOrAddress": { "type": "string", "minLength": 3, "maxLength": 250 },
+        "roomNumber": { "type": "string", "maxLength": 40 },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "label", "recipientName", "phone", "hostelOrAddress", "createdAt"]
+    },
+    "Order": {
+      "title": "Order",
+      "description": "Customer refill order with delivery schedule, container preference, and tracking status.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "orderNumber": { "type": "string", "minLength": 5, "maxLength": 40 },
+        "customerName": { "type": "string", "minLength": 2, "maxLength": 100 },
+        "customerEmail": { "type": "string", "maxLength": 150 },
+        "phone": { "type": "string", "minLength": 10, "maxLength": 20 },
+        "hostelOrAddress": { "type": "string", "minLength": 3, "maxLength": 250 },
+        "roomNumber": { "type": "string", "maxLength": 40 },
+        "deliveryInstructions": { "type": "string", "maxLength": 300 },
+        "preferredDeliveryTime": { "type": "string", "minLength": 2, "maxLength": 80 },
+        "containerOption": { "type": "string", "enum": ["own_container", "reusable_container"] },
+        "paymentMethod": { "type": "string", "enum": ["upi", "razorpay", "cod", "demo"] },
+        "paymentStatus": { "type": "string", "enum": ["pending_cod", "verification_pending", "paid_verified", "demo_confirmed", "failed"] },
+        "status": { "type": "string", "enum": ["Order Placed", "Order Confirmed", "Preparing Refill", "Out for Delivery", "Delivered", "Cancelled"] },
+        "subtotal": { "type": "number" },
+        "containerDeposit": { "type": "number" },
+        "deliveryFee": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "moneySaved": { "type": "number" },
+        "bottlesAvoided": { "type": "number" },
+        "totalLitres": { "type": "number" },
+        "itemCount": { "type": "number" },
+        "itemsSummary": { "type": "string", "maxLength": 400 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "orderNumber", "customerName", "phone", "hostelOrAddress", "preferredDeliveryTime", "containerOption", "paymentMethod", "paymentStatus", "status", "subtotal", "containerDeposit", "deliveryFee", "totalAmount", "moneySaved", "bottlesAvoided", "totalLitres", "itemCount", "itemsSummary", "createdAt", "updatedAt"]
+    },
+    "OrderItem": {
+      "title": "OrderItem",
+      "description": "Line item belonging to a specific order.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "productName": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "imageUrl": { "type": "string", "maxLength": 500 },
+        "volumeMl": { "type": "number", "enum": [250, 500, 1000] },
+        "unitPrice": { "type": "number" },
+        "quantity": { "type": "number" },
+        "lineTotal": { "type": "number" },
+        "containerMode": { "type": "string", "enum": ["own", "reusable"] }
+      },
+      "required": ["orderId", "userId", "productId", "productName", "volumeMl", "unitPrice", "quantity", "lineTotal", "containerMode"]
+    },
+    "Payment": {
+      "title": "Payment",
+      "description": "Payment transaction record for an order.",
+      "type": "object",
+      "properties": {
+        "orderId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "method": { "type": "string", "enum": ["upi", "razorpay", "cod", "demo"] },
+        "status": { "type": "string", "enum": ["pending_cod", "verification_pending", "paid_verified", "demo_confirmed", "failed"] },
+        "amount": { "type": "number" },
+        "currency": { "type": "string", "enum": ["INR"] },
+        "transactionRef": { "type": "string", "maxLength": 120 },
+        "providerNote": { "type": "string", "maxLength": 200 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["orderId", "userId", "method", "status", "amount", "currency", "createdAt", "updatedAt"]
+    },
+    "SustainabilityConfig": {
+      "title": "SustainabilityConfig",
+      "description": "Configurable environmental assumptions and demo baseline metrics.",
+      "type": "object",
+      "properties": {
+        "plasticGramsPer500mlBottle": { "type": "number" },
+        "co2GramsPerBottle": { "type": "number" },
+        "demoBaselineRefills": { "type": "number" },
+        "demoBaselineBottlesAvoided": { "type": "number" },
+        "demoBaselineMoneySaved": { "type": "number" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["plasticGramsPer500mlBottle", "co2GramsPerBottle", "demoBaselineRefills", "demoBaselineBottlesAvoided", "demoBaselineMoneySaved", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/User" },
+      "description": "Private customer/admin user profile documents."
+    },
+    "/admins/{userId}": {
+      "schema": { "$ref": "#/entities/AdminRecord" },
+      "description": "Trusted admin role registry."
+    },
+    "/products/{productId}": {
+      "schema": { "$ref": "#/entities/Product" },
+      "description": "Public refill product catalog."
+    },
+    "/cart_items/{cartItemId}": {
+      "schema": { "$ref": "#/entities/CartItem" },
+      "description": "Customer shopping cart items."
+    },
+    "/addresses/{addressId}": {
+      "schema": { "$ref": "#/entities/Address" },
+      "description": "Saved customer delivery addresses."
+    },
+    "/orders/{orderId}": {
+      "schema": { "$ref": "#/entities/Order" },
+      "description": "Customer refill orders."
+    },
+    "/orders/{orderId}/order_items/{itemId}": {
+      "schema": { "$ref": "#/entities/OrderItem" },
+      "description": "Line items belonging to an order."
+    },
+    "/payments/{paymentId}": {
+      "schema": { "$ref": "#/entities/Payment" },
+      "description": "Payment records linked to orders."
+    },
+    "/settings/{settingId}": {
+      "schema": { "$ref": "#/entities/SustainabilityConfig" },
+      "description": "Platform sustainability assumptions and baseline configuration."
+    }
+  }
+}

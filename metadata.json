@@ -1,0 +1,6 @@
+{
+  "name": "REFILL+ — Household Liquid Refill Marketplace",
+  "description": "Affordable, zero-waste household liquid refill service for students, hostel residents, and households around DBS Global University, Dehradun. Refill More. Waste Less.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,450 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global Safety Net (Default Deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Core Primitives & Identity Helpers
+    // -------------------------------------------------------------------------
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedUser() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isOwner(userId) {
+      return isVerifiedUser() && request.auth.uid == userId;
+    }
+
+    function isBootstrappedAdmin() {
+      return isVerifiedUser() && request.auth.token.email == 'aprajita.0251mba469@dgu.ac.in';
+    }
+
+    function isAdmin() {
+      return isBootstrappedAdmin() || (
+        isVerifiedUser() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Entity Validation Blueprints
+    // -------------------------------------------------------------------------
+    function isValidUser(data, userId) {
+      return data.keys().hasAll([
+          'uid', 'displayName', 'email', 'role',
+          'totalOrders', 'totalMoneySaved', 'totalBottlesAvoided',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'uid', 'displayName', 'email', 'phone', 'hostelOrAddress', 'roomNumber',
+          'role', 'adminRequested', 'totalOrders', 'totalMoneySaved',
+          'totalBottlesAvoided', 'createdAt', 'updatedAt'
+        ])
+        && data.uid is string && isValidId(data.uid) && data.uid == userId
+        && data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+        && (!('phone' in data) || (data.phone is string && data.phone.size() <= 20))
+        && (!('hostelOrAddress' in data) || (data.hostelOrAddress is string && data.hostelOrAddress.size() <= 250))
+        && (!('roomNumber' in data) || (data.roomNumber is string && data.roomNumber.size() <= 40))
+        && data.role in ['customer', 'admin']
+        && (!('adminRequested' in data) || data.adminRequested is bool)
+        && data.totalOrders is number && data.totalOrders >= 0
+        && data.totalMoneySaved is number && data.totalMoneySaved >= 0
+        && data.totalBottlesAvoided is number && data.totalBottlesAvoided >= 0
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAdminRecord(data, adminId) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt'])
+        && data.keys().hasOnly(['uid', 'email', 'grantedBy', 'createdAt'])
+        && data.uid is string && isValidId(data.uid) && data.uid == adminId
+        && data.email is string && data.email.size() >= 3 && data.email.size() <= 150
+        && (!('grantedBy' in data) || (data.grantedBy is string && data.grantedBy.size() <= 150))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidProduct(data) {
+      return data.keys().hasAll([
+          'name', 'category', 'description', 'imageUrl',
+          'price250ml', 'price500ml', 'price1000ml',
+          'mrpPlastic250ml', 'mrpPlastic500ml', 'mrpPlastic1000ml',
+          'stockLitres', 'active', 'featured', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'name', 'category', 'description', 'ingredients', 'scent', 'imageUrl',
+          'price250ml', 'price500ml', 'price1000ml',
+          'mrpPlastic250ml', 'mrpPlastic500ml', 'mrpPlastic1000ml',
+          'stockLitres', 'active', 'featured', 'updatedAt'
+        ])
+        && data.name is string && data.name.size() >= 2 && data.name.size() <= 100
+        && data.category in ['Personal Care', 'Kitchen', 'Home Care', 'Laundry']
+        && data.description is string && data.description.size() >= 10 && data.description.size() <= 600
+        && (!('ingredients' in data) || (data.ingredients is string && data.ingredients.size() <= 300))
+        && (!('scent' in data) || (data.scent is string && data.scent.size() <= 80))
+        && data.imageUrl is string && data.imageUrl.size() >= 1 && data.imageUrl.size() <= 500
+        && data.price250ml is number && data.price250ml > 0 && data.price250ml <= 50000
+        && data.price500ml is number && data.price500ml > 0 && data.price500ml <= 50000
+        && data.price1000ml is number && data.price1000ml > 0 && data.price1000ml <= 50000
+        && data.mrpPlastic250ml is number && data.mrpPlastic250ml > 0 && data.mrpPlastic250ml <= 50000
+        && data.mrpPlastic500ml is number && data.mrpPlastic500ml > 0 && data.mrpPlastic500ml <= 50000
+        && data.mrpPlastic1000ml is number && data.mrpPlastic1000ml > 0 && data.mrpPlastic1000ml <= 50000
+        && data.stockLitres is number && data.stockLitres >= 0 && data.stockLitres <= 100000
+        && data.active is bool
+        && data.featured is bool
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidCartItem(data) {
+      return data.keys().hasAll([
+          'userId', 'productId', 'productName', 'volumeMl',
+          'unitPrice', 'plasticMrp', 'quantity', 'containerMode', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'productId', 'productName', 'imageUrl', 'volumeMl',
+          'unitPrice', 'plasticMrp', 'quantity', 'containerMode', 'updatedAt'
+        ])
+        && data.userId is string && isValidId(data.userId) && data.userId == request.auth.uid
+        && data.productId is string && isValidId(data.productId)
+        && data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 100
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500))
+        && data.volumeMl in [250, 500, 1000]
+        && data.unitPrice is number && data.unitPrice > 0 && data.unitPrice <= 50000
+        && data.plasticMrp is number && data.plasticMrp > 0 && data.plasticMrp <= 50000
+        && data.quantity is number && data.quantity >= 1 && data.quantity <= 50
+        && data.containerMode in ['own', 'reusable']
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidAddress(data) {
+      return data.keys().hasAll(['userId', 'label', 'recipientName', 'phone', 'hostelOrAddress', 'createdAt'])
+        && data.keys().hasOnly(['userId', 'label', 'recipientName', 'phone', 'hostelOrAddress', 'roomNumber', 'createdAt'])
+        && data.userId is string && isValidId(data.userId) && data.userId == request.auth.uid
+        && data.label is string && data.label.size() >= 1 && data.label.size() <= 60
+        && data.recipientName is string && data.recipientName.size() >= 2 && data.recipientName.size() <= 100
+        && data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20
+        && data.hostelOrAddress is string && data.hostelOrAddress.size() >= 3 && data.hostelOrAddress.size() <= 250
+        && (!('roomNumber' in data) || (data.roomNumber is string && data.roomNumber.size() <= 40))
+        && data.createdAt is timestamp;
+    }
+
+    function isValidOrder(data) {
+      return data.keys().hasAll([
+          'userId', 'orderNumber', 'customerName', 'phone', 'hostelOrAddress',
+          'preferredDeliveryTime', 'containerOption', 'paymentMethod', 'paymentStatus',
+          'status', 'subtotal', 'containerDeposit', 'deliveryFee', 'totalAmount',
+          'moneySaved', 'bottlesAvoided', 'totalLitres', 'itemCount', 'itemsSummary',
+          'createdAt', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'userId', 'orderNumber', 'customerName', 'customerEmail', 'phone',
+          'hostelOrAddress', 'roomNumber', 'deliveryInstructions', 'preferredDeliveryTime',
+          'containerOption', 'paymentMethod', 'paymentStatus', 'status',
+          'subtotal', 'containerDeposit', 'deliveryFee', 'totalAmount',
+          'moneySaved', 'bottlesAvoided', 'totalLitres', 'itemCount', 'itemsSummary',
+          'createdAt', 'updatedAt'
+        ])
+        && data.userId is string && isValidId(data.userId)
+        && data.orderNumber is string && data.orderNumber.size() >= 5 && data.orderNumber.size() <= 40
+        && data.customerName is string && data.customerName.size() >= 2 && data.customerName.size() <= 100
+        && (!('customerEmail' in data) || (data.customerEmail is string && data.customerEmail.size() <= 150))
+        && data.phone is string && data.phone.size() >= 10 && data.phone.size() <= 20
+        && data.hostelOrAddress is string && data.hostelOrAddress.size() >= 3 && data.hostelOrAddress.size() <= 250
+        && (!('roomNumber' in data) || (data.roomNumber is string && data.roomNumber.size() <= 40))
+        && (!('deliveryInstructions' in data) || (data.deliveryInstructions is string && data.deliveryInstructions.size() <= 300))
+        && data.preferredDeliveryTime is string && data.preferredDeliveryTime.size() >= 2 && data.preferredDeliveryTime.size() <= 80
+        && data.containerOption in ['own_container', 'reusable_container']
+        && data.paymentMethod in ['upi', 'razorpay', 'cod', 'demo']
+        && data.paymentStatus in ['pending_cod', 'verification_pending', 'paid_verified', 'demo_confirmed', 'failed']
+        && data.status in ['Order Placed', 'Order Confirmed', 'Preparing Refill', 'Out for Delivery', 'Delivered', 'Cancelled']
+        && data.subtotal is number && data.subtotal > 0 && data.subtotal <= 500000
+        && data.containerDeposit is number && data.containerDeposit >= 0 && data.containerDeposit <= 10000
+        && data.deliveryFee is number && data.deliveryFee >= 0 && data.deliveryFee <= 5000
+        && data.totalAmount is number && data.totalAmount > 0 && data.totalAmount <= 500000
+        && data.moneySaved is number && data.moneySaved >= 0 && data.moneySaved <= 500000
+        && data.bottlesAvoided is number && data.bottlesAvoided >= 0 && data.bottlesAvoided <= 10000
+        && data.totalLitres is number && data.totalLitres > 0 && data.totalLitres <= 10000
+        && data.itemCount is number && data.itemCount >= 1 && data.itemCount <= 200
+        && data.itemsSummary is string && data.itemsSummary.size() >= 1 && data.itemsSummary.size() <= 400
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidOrderItem(data, orderId) {
+      return data.keys().hasAll([
+          'orderId', 'userId', 'productId', 'productName',
+          'volumeMl', 'unitPrice', 'quantity', 'lineTotal', 'containerMode'
+        ])
+        && data.keys().hasOnly([
+          'orderId', 'userId', 'productId', 'productName', 'imageUrl',
+          'volumeMl', 'unitPrice', 'quantity', 'lineTotal', 'containerMode'
+        ])
+        && data.orderId is string && isValidId(data.orderId) && data.orderId == orderId
+        && data.userId is string && isValidId(data.userId)
+        && data.productId is string && isValidId(data.productId)
+        && data.productName is string && data.productName.size() >= 1 && data.productName.size() <= 100
+        && (!('imageUrl' in data) || (data.imageUrl is string && data.imageUrl.size() <= 500))
+        && data.volumeMl in [250, 500, 1000]
+        && data.unitPrice is number && data.unitPrice > 0 && data.unitPrice <= 50000
+        && data.quantity is number && data.quantity >= 1 && data.quantity <= 50
+        && data.lineTotal is number && data.lineTotal > 0 && data.lineTotal <= 500000
+        && data.containerMode in ['own', 'reusable'];
+    }
+
+    function isValidPayment(data) {
+      return data.keys().hasAll(['orderId', 'userId', 'method', 'status', 'amount', 'currency', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly(['orderId', 'userId', 'method', 'status', 'amount', 'currency', 'transactionRef', 'providerNote', 'createdAt', 'updatedAt'])
+        && data.orderId is string && isValidId(data.orderId)
+        && data.userId is string && isValidId(data.userId)
+        && data.method in ['upi', 'razorpay', 'cod', 'demo']
+        && data.status in ['pending_cod', 'verification_pending', 'paid_verified', 'demo_confirmed', 'failed']
+        && data.amount is number && data.amount > 0 && data.amount <= 500000
+        && data.currency == 'INR'
+        && (!('transactionRef' in data) || (data.transactionRef is string && data.transactionRef.size() <= 120))
+        && (!('providerNote' in data) || (data.providerNote is string && data.providerNote.size() <= 200))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSustainabilityConfig(data) {
+      return data.keys().hasAll([
+          'plasticGramsPer500mlBottle', 'co2GramsPerBottle',
+          'demoBaselineRefills', 'demoBaselineBottlesAvoided',
+          'demoBaselineMoneySaved', 'updatedAt'
+        ])
+        && data.keys().hasOnly([
+          'plasticGramsPer500mlBottle', 'co2GramsPerBottle',
+          'demoBaselineRefills', 'demoBaselineBottlesAvoided',
+          'demoBaselineMoneySaved', 'updatedAt'
+        ])
+        && data.plasticGramsPer500mlBottle is number && data.plasticGramsPer500mlBottle > 0 && data.plasticGramsPer500mlBottle <= 500
+        && data.co2GramsPerBottle is number && data.co2GramsPerBottle > 0 && data.co2GramsPerBottle <= 2000
+        && data.demoBaselineRefills is number && data.demoBaselineRefills >= 0 && data.demoBaselineRefills <= 1000000
+        && data.demoBaselineBottlesAvoided is number && data.demoBaselineBottlesAvoided >= 0 && data.demoBaselineBottlesAvoided <= 5000000
+        && data.demoBaselineMoneySaved is number && data.demoBaselineMoneySaved >= 0 && data.demoBaselineMoneySaved <= 100000000
+        && data.updatedAt is timestamp;
+    }
+
+    // -------------------------------------------------------------------------
+    // Collection Match Blocks
+    // -------------------------------------------------------------------------
+
+    // Connection test endpoint
+    match /test/connection {
+      allow get: if true;
+    }
+
+    // Users collection (PII protected: owner or admin only)
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId)
+        && isOwner(userId)
+        && isValidUser(incoming(), userId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          incoming().role == 'customer' ||
+          (incoming().role == 'admin' && isBootstrappedAdmin())
+        );
+      allow update: if isValidId(userId)
+        && isValidUser(incoming(), userId)
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().uid == existing().uid
+        && (
+          isAdmin() || (
+            isOwner(userId)
+            && incoming().role == existing().role
+            && (
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'displayName', 'phone', 'hostelOrAddress', 'roomNumber', 'adminRequested', 'updatedAt'
+              ]) ||
+              incoming().diff(existing()).affectedKeys().hasOnly([
+                'totalOrders', 'totalMoneySaved', 'totalBottlesAvoided', 'updatedAt'
+              ])
+            )
+          )
+        );
+      allow delete: if isValidId(userId) && isAdmin();
+    }
+
+    // Trusted Admins registry
+    match /admins/{adminId} {
+      allow get: if isValidId(adminId) && (isOwner(adminId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(adminId)
+        && isAdmin()
+        && isValidAdminRecord(incoming(), adminId)
+        && incoming().createdAt == request.time;
+      allow update: if false;
+      allow delete: if isValidId(adminId) && isAdmin() && adminId != request.auth.uid;
+    }
+
+    // Refill Products Catalog (Public read, Admin-only write)
+    match /products/{productId} {
+      allow get: if isValidId(productId);
+      allow list: if true;
+      allow create: if isValidId(productId)
+        && isAdmin()
+        && isValidProduct(incoming())
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(productId)
+        && isAdmin()
+        && isValidProduct(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(productId) && isAdmin();
+    }
+
+    // Persistent Shopping Cart Items (Owner only)
+    match /cart_items/{cartItemId} {
+      allow get: if isValidId(cartItemId) && isVerifiedUser() && existing().userId == request.auth.uid;
+      allow list: if isVerifiedUser() && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(cartItemId)
+        && isVerifiedUser()
+        && isValidCartItem(incoming())
+        && incoming().updatedAt == request.time
+        && exists(/databases/$(database)/documents/products/$(incoming().productId));
+      allow update: if isValidId(cartItemId)
+        && isVerifiedUser()
+        && existing().userId == request.auth.uid
+        && isValidCartItem(incoming())
+        && incoming().userId == existing().userId
+        && incoming().productId == existing().productId
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'volumeMl', 'unitPrice', 'plasticMrp', 'quantity', 'containerMode', 'updatedAt'
+        ]);
+      allow delete: if isValidId(cartItemId) && isVerifiedUser() && existing().userId == request.auth.uid;
+    }
+
+    // Saved Customer Delivery Addresses (Owner or Admin)
+    match /addresses/{addressId} {
+      allow get: if isValidId(addressId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(addressId)
+        && isVerifiedUser()
+        && isValidAddress(incoming())
+        && incoming().createdAt == request.time;
+      allow update: if isValidId(addressId)
+        && isVerifiedUser()
+        && existing().userId == request.auth.uid
+        && isValidAddress(incoming())
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'label', 'recipientName', 'phone', 'hostelOrAddress', 'roomNumber'
+        ]);
+      allow delete: if isValidId(addressId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+    }
+
+    // Orders Collection (Owner read/create/cancel, Admin full management)
+    match /orders/{orderId} {
+      allow get: if isValidId(orderId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(orderId)
+        && isVerifiedUser()
+        && isValidOrder(incoming())
+        && incoming().userId == request.auth.uid
+        && incoming().status == 'Order Placed'
+        && incoming().paymentStatus in ['pending_cod', 'verification_pending', 'demo_confirmed', 'failed']
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(orderId)
+        && isValidOrder(incoming())
+        && incoming().userId == existing().userId
+        && incoming().orderNumber == existing().orderNumber
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && (
+          isAdmin() || (
+            isVerifiedUser()
+            && existing().userId == request.auth.uid
+            && existing().status in ['Order Placed', 'Order Confirmed']
+            && incoming().status == 'Cancelled'
+            && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+          )
+        );
+      allow delete: if isValidId(orderId) && isAdmin();
+
+      // Order Line Items Subcollection (Master Gate via parent Order)
+      match /order_items/{itemId} {
+        allow get: if isValidId(orderId) && isValidId(itemId) && (
+          isAdmin() || (
+            isVerifiedUser() &&
+            get(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid
+          )
+        );
+        allow list: if isAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+        allow create: if isValidId(orderId) && isValidId(itemId)
+          && isVerifiedUser()
+          && isValidOrderItem(incoming(), orderId)
+          && incoming().userId == request.auth.uid
+          && (
+            (exists(/databases/$(database)/documents/orders/$(orderId)) &&
+             get(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid)
+            ||
+            (existsAfter(/databases/$(database)/documents/orders/$(orderId)) &&
+             getAfter(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid)
+          );
+        allow update, delete: if isValidId(orderId) && isValidId(itemId) && isAdmin();
+      }
+    }
+
+    // Payments Collection
+    match /payments/{paymentId} {
+      allow get: if isValidId(paymentId) && (isAdmin() || (isVerifiedUser() && existing().userId == request.auth.uid));
+      allow list: if isAdmin() || (isVerifiedUser() && resource.data.userId == request.auth.uid);
+      allow create: if isValidId(paymentId)
+        && isVerifiedUser()
+        && isValidPayment(incoming())
+        && incoming().userId == request.auth.uid
+        && incoming().status in ['pending_cod', 'verification_pending', 'demo_confirmed', 'failed']
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time
+        && (
+          exists(/databases/$(database)/documents/orders/$(incoming().orderId)) ||
+          existsAfter(/databases/$(database)/documents/orders/$(incoming().orderId))
+        );
+      allow update: if isValidId(paymentId)
+        && isAdmin()
+        && isValidPayment(incoming())
+        && incoming().orderId == existing().orderId
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(paymentId) && isAdmin();
+    }
+
+    // Sustainability Configuration & Demo Baseline (Public read, Admin write)
+    match /settings/{settingId} {
+      allow get: if isValidId(settingId);
+      allow list: if true;
+      allow create, update: if isValidId(settingId)
+        && isAdmin()
+        && isValidSustainabilityConfig(incoming())
+        && incoming().updatedAt == request.time;
+      allow delete: if isValidId(settingId) && isAdmin();
+    }
+  }
+}
